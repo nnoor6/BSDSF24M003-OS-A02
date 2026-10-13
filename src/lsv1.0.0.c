@@ -20,6 +20,14 @@
 #include <grp.h>
 #include <time.h>
 
+
+/* ---------- ANSI color codes ---------- */
+#define COLOR_RESET   "\033[0m"
+#define COLOR_BLUE    "\033[0;34m"
+#define COLOR_GREEN   "\033[0;32m"
+#define COLOR_RED     "\033[0;31m"
+#define COLOR_PINK    "\033[0;35m"   /* magenta */
+#define COLOR_REVERSE "\033[0;7m"
 extern int errno;
 
 /* ---------- Global flags ---------- */
@@ -32,13 +40,50 @@ static int compare_names(const void *a, const void *b)
     return strcmp(name_a, name_b);
 }
 /* ---------- Forward declarations ---------- */
+/* ---------- Forward declarations ---------- */
 void do_ls(const char *dir);
 void print_long(const char *dir, const char *name);
-void print_columns(char **names, int count, int maxlen);
-void print_horizontal(char **names, int count, int maxlen);
+void print_columns(const char *dir, char **names, int count, int maxlen);
+void print_horizontal(const char *dir, char **names, int count, int maxlen);
+void print_colored(const char *name, const struct stat *st);
 void print_permissions(mode_t mode);
 int  get_terminal_width(void);
 
+/* Decide the color for a file given its name and st_mode,
+ * and print the name wrapped in the correct escape codes. */
+void print_colored(const char *name, const struct stat *st)
+{
+    const char *color = NULL;
+
+    /* 1. Symlink (must be checked first via lstat's mode) */
+    if (S_ISLNK(st->st_mode)) {
+        color = COLOR_PINK;
+    }
+    /* 2. Directory */
+    else if (S_ISDIR(st->st_mode)) {
+        color = COLOR_BLUE;
+    }
+    /* 3. Executable (any execute bit set) */
+    else if (st->st_mode & (S_IXUSR | S_IXGRP | S_IXOTH)) {
+        color = COLOR_GREEN;
+    }
+    /* 4. Archive by extension */
+    else if (strstr(name, ".tar") || strstr(name, ".gz") ||
+             strstr(name, ".zip") || strstr(name, ".tgz") ||
+             strstr(name, ".bz2") || strstr(name, ".xz")) {
+        color = COLOR_RED;
+    }
+    /* 5. Special files: char device, block device, FIFO, socket */
+    else if (S_ISCHR(st->st_mode) || S_ISBLK(st->st_mode) ||
+             S_ISFIFO(st->st_mode) || S_ISSOCK(st->st_mode)) {
+        color = COLOR_REVERSE;
+    }
+
+    if (color)
+        printf("%s%s%s", color, name, COLOR_RESET);
+    else
+        printf("%s", name);
+}
 /* ---------- main ---------- */
 int main(int argc, char const *argv[])
 {
@@ -146,11 +191,11 @@ void print_long(const char *dir, const char *name)
     printf("%s ", timebuf);
 
     /* 7. Filename */
-    printf("%s\n", name);
-}
+    print_colored(name, &st);
+    printf("\n");}
 
 /* ---------- Down-then-across columns (default) ---------- */
-void print_columns(char **names, int count, int maxlen)
+void print_columns(const char *dir, char **names, int count, int maxlen)
 {
     int term_width = get_terminal_width();
     int col_width  = maxlen + 2;
@@ -163,17 +208,31 @@ void print_columns(char **names, int count, int maxlen)
             int idx = c * rows + r;
             if (idx >= count) continue;
 
-            if (c == cols - 1 || idx + rows >= count)
-                printf("%s", names[idx]);
-            else
-                printf("%-*s", col_width, names[idx]);
+            /* We need the stat to know the color */
+            char fullpath[4096];
+            snprintf(fullpath, sizeof(fullpath), "%s/%s", dir, names[idx]);
+            struct stat st;
+            lstat(fullpath, &st);
+
+            /* For simplicity, print directly with printf.
+               Padding uses the raw name length, which may under- or over-pad
+               when ANSI codes are present. Real ls handles this with extra logic. */
+
+            if (c == cols - 1 || idx + rows >= count) {
+                print_colored(names[idx], &st);
+            } else {
+                print_colored(names[idx], &st);
+                /* Pad with spaces to col_width (approx.) */
+                int pad = col_width - (int)strlen(names[idx]);
+                if (pad < 0) pad = 0;
+                for (int s = 0; s < pad; s++) putchar(' ');
+            }
         }
         printf("\n");
     }
 }
-
 /* ---------- Horizontal columns (-x) ---------- */
-void print_horizontal(char **names, int count, int maxlen)
+void print_horizontal(const char *dir, char **names, int count, int maxlen)
 {
     int term_width = get_terminal_width();
     int col_width  = maxlen + 2;
@@ -184,12 +243,20 @@ void print_horizontal(char **names, int count, int maxlen)
             printf("\n");
             pos = 0;
         }
-        printf("%-*s", col_width, names[i]);
+
+        char fullpath[4096];
+        snprintf(fullpath, sizeof(fullpath), "%s/%s", dir, names[i]);
+        struct stat st;
+        lstat(fullpath, &st);
+
+        print_colored(names[i], &st);
+        int pad = col_width - (int)strlen(names[i]);
+        if (pad < 0) pad = 0;
+        for (int s = 0; s < pad; s++) putchar(' ');
         pos += col_width;
     }
     printf("\n");
 }
-
 /* ---------- Directory listing ---------- */
 #define MAX_FILES 4096
 
@@ -238,11 +305,9 @@ void do_ls(const char *dir)
         for (int i = 0; i < count; i++)
             print_long(dir, names[i]);
     } else if (horizontal) {
-        print_horizontal(names, count, maxlen);
+        print_horizontal(dir, names, count, maxlen);
     } else {
-        print_columns(names, count, maxlen);
-    }
-
-    for (int i = 0; i < count; i++)
+        print_columns(dir, names, count, maxlen);
+    }    for (int i = 0; i < count; i++)
         free(names[i]);
 }
