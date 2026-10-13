@@ -116,3 +116,37 @@ them, and it needs a single generic signature that works for any data type.
 Returning a negative, zero, or positive int tells qsort the relative order
 of the two elements.
 
+
+
+## Feature 6: Colorized Output Based on File Type
+
+### Q1: How ANSI escape codes work, and the code sequence for green
+ANSI escape codes are short character sequences that begin with the ESC
+character (ASCII 27, often written as `\033` or `\e`), followed by `[`,
+then a numeric code, then a letter (usually `m` for "set graphics mode").
+The terminal interprets these sequences as instructions to change text
+attributes (color, bold, underline, etc.) instead of printing them as
+visible characters.
+
+To print text in green and then reset to the default:
+    "\033[0;32m"   start green
+    ...text...
+    "\033[0m"      reset to default
+
+`0;32` means: 0 = normal intensity, 32 = green foreground. Other common
+foreground codes are 30 = black, 31 = red, 33 = yellow, 34 = blue,
+35 = magenta, 36 = cyan, 37 = white. Using 1 instead of 0 gives bright
+versions (e.g., `\033[1;32m` = bright green).
+
+### Q2: Which st_mode bits indicate an executable file
+The executable permission bits in st_mode are:
+    S_IXUSR  (0100)  owner  may execute
+    S_IXGRP  (0010)  group  may execute
+    S_IXOTH  (0001)  others may execute
+
+To check whether any user can execute the file, we do:
+    if (st.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH)) { ... }
+
+Each bit is tested with bitwise AND against the corresponding mask. If the
+result is nonzero for any of the three, the file is considered executable
+by at least someone, and ls colors it green.
