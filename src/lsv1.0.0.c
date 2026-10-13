@@ -32,6 +32,7 @@ extern int errno;
 
 /* ---------- Global flags ---------- */
 int long_listing = 0;    /* -l */
+int recursive = 0;    /* -R */
 int horizontal   = 0;    /* -x */
 static int compare_names(const void *a, const void *b)
 {
@@ -88,13 +89,16 @@ void print_colored(const char *name, const struct stat *st)
 int main(int argc, char const *argv[])
 {
     int opt;
-    while ((opt = getopt(argc, (char * const *)argv, "lx")) != -1) {
+while ((opt = getopt(argc, (char * const *)argv, "lxR")) != -1) {
         switch (opt) {
             case 'l':
                 long_listing = 1;
                 break;
             case 'x':
                 horizontal = 1;
+                break;
+            case 'R':
+                recursive = 1;
                 break;
             default:
                 fprintf(stderr, "Usage: %s [-l] [-x] [dir...]\n", argv[0]);
@@ -295,12 +299,14 @@ void do_ls(const char *dir)
         perror("readdir failed");
 
     closedir(dp);
-       if (errno != 0)
-        perror("readdir failed");
 
-    
-    /* Sort the collected names alphabetically */
     qsort(names, count, sizeof(char *), compare_names);
+
+    /* Header for recursive mode */
+    if (recursive)
+        printf("%s:\n", dir);
+
+    /* Display the entries */
     if (long_listing) {
         for (int i = 0; i < count; i++)
             print_long(dir, names[i]);
@@ -308,6 +314,25 @@ void do_ls(const char *dir)
         print_horizontal(dir, names, count, maxlen);
     } else {
         print_columns(dir, names, count, maxlen);
-    }    for (int i = 0; i < count; i++)
+    }
+
+    /* Recurse into subdirectories */
+    if (recursive) {
+        for (int i = 0; i < count; i++) {
+            char fullpath[4096];
+            snprintf(fullpath, sizeof(fullpath), "%s/%s", dir, names[i]);
+
+            struct stat st;
+            if (lstat(fullpath, &st) == -1)
+                continue;
+
+            if (S_ISDIR(st.st_mode)) {
+                printf("\n");
+                do_ls(fullpath);
+            }
+        }
+    }
+
+    for (int i = 0; i < count; i++)
         free(names[i]);
 }
