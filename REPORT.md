@@ -42,3 +42,40 @@ then on a wider terminal we would waste space and produce fewer columns
 than possible, and on a narrower terminal the output would overflow or
 wrap awkwardly. The fixed fallback is only useful when the output is
 redirected (e.g., `ls > file`), because there's no terminal to query.
+
+## Feature 4: Horizontal Column Display (-x)
+
+### Q1: Compare implementation complexity of "down then across" vs "across"
+
+The "across" (horizontal) mode is significantly simpler. It requires only a
+single pass through the list of filenames: print each name padded to a fixed
+column width, and whenever the current horizontal position plus the next
+column width would exceed the terminal width, print a newline and reset the
+position. No pre-calculation of rows is needed.
+
+The "down then across" (vertical) mode is more complex because the items are
+laid out column-first. Before printing anything, we must:
+  1. Know the total number of items (count).
+  2. Know the number of columns that fit (based on terminal width and the
+     longest filename).
+  3. Compute the number of rows = ceil(count / cols).
+  4. Then iterate row-by-row and, for each cell, compute the array index using
+     the formula: index = column * rows + row.
+
+That pre-calculation and the index math are what make vertical mode harder.
+
+### Q2: Strategy for managing display modes
+
+A single integer flag is used for each display mode:
+    int long_listing = 0;   /* -l */
+    int horizontal   = 0;   /* -x */
+
+During argument parsing, getopt() sets the appropriate flag to 1. Later, in
+do_ls(), after all filenames are collected into the array, we check the flags
+in priority order:
+    if (long_listing)      -> call print_long() for each entry
+    else if (horizontal)   -> call print_horizontal()
+    else                   -> call print_columns()   (default vertical)
+
+If both -l and -x are given, -l wins (long listing takes precedence), which
+matches how real ls behaves.

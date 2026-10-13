@@ -25,7 +25,12 @@ extern int errno;
 /* ---------- Global flags ---------- */
 int long_listing = 0;    /* -l */
 int horizontal   = 0;    /* -x */
-
+static int compare_names(const void *a, const void *b)
+{
+    const char *name_a = *(const char **)a;
+    const char *name_b = *(const char **)b;
+    return strcmp(name_a, name_b);
+}
 /* ---------- Forward declarations ---------- */
 void do_ls(const char *dir);
 void print_long(const char *dir, const char *name);
@@ -223,7 +228,12 @@ void do_ls(const char *dir)
         perror("readdir failed");
 
     closedir(dp);
+       if (errno != 0)
+        perror("readdir failed");
 
+    
+    /* Sort the collected names alphabetically */
+    qsort(names, count, sizeof(char *), compare_names);
     if (long_listing) {
         for (int i = 0; i < count; i++)
             print_long(dir, names[i]);
