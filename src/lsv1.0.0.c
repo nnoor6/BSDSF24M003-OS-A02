@@ -7,6 +7,8 @@
 *       % lsv1.0.0  /home
 *       $ lsv1.0.0  /home/kali/   /etc/
 */
+#include <sys/ioctl.h>
+#include <unistd.h>      
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -28,6 +30,14 @@
 
 
 int long_listing = 0;
+
+int get_terminal_width(void)
+{
+    struct winsize w;
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &w) == -1 || w.ws_col == 0)
+        return 80;   // fallback
+    return w.ws_col;
+}
 extern int errno;
 
 
@@ -103,9 +113,33 @@ void print_long(const char *dir, const char *name)
     /* 7. Filename */
     printf("%s\n", name);
 }
+void print_columns(char **names, int count, int maxlen)
+{
+    int term_width = get_terminal_width();
+    int col_width  = maxlen + 2;               // 2 spaces gap
+    int cols       = term_width / col_width;
+    if (cols < 1) cols = 1;
+    int rows       = (count + cols - 1) / cols;
+
+    for (int r = 0; r < rows; r++) {
+        for (int c = 0; c < cols; c++) {
+            int idx = c * rows + r;            // <-- down then across
+            if (idx >= count) continue;
+
+            if (c == cols - 1 || idx + rows >= count)
+                printf("%s", names[idx]);      // last in row: no padding
+            else
+                printf("%-*s", col_width, names[idx]);
+        }
+        printf("\n");
+    }
+}
 
 void do_ls(const char *dir);
 
+
+void print_columns(char **names, int count, int maxlen);
+void print_long(const char *dir, const char *name);
 int main(int argc, char const *argv[])
 {
     int opt;
@@ -127,12 +161,15 @@ int main(int argc, char const *argv[])
             if (argc - optind > 1)
                 printf("%s:\n", argv[i]);
             do_ls(argv[i]);
-            if (argc - optind > 1)
+           if (argc - optind > 1)
                 puts("");
         }
     }
     return 0;
 }
+#define MAX_FILES 4096
+#define MAX_NAME  256
+
 void do_ls(const char *dir)
 {
     struct dirent *entry;
@@ -141,20 +178,44 @@ void do_ls(const char *dir)
         fprintf(stderr, "Cannot open directory : %s\n", dir);
         return;
     }
+
+    /* Collect filenames */
+    char *names[MAX_FILES];
+    int   count = 0;
+    int   maxlen = 0;
+
     errno = 0;
     while ((entry = readdir(dp)) != NULL)
     {
         if (entry->d_name[0] == '.')
             continue;
 
-        if (long_listing)
-            print_long(dir, entry->d_name);
-        else
-            printf("%s\n", entry->d_name);
+        names[count] = strdup(entry->d_name);
+        if (!names[count]) {
+            perror("strdup");
+            break;
+        }
+        int len = strlen(names[count]);
+        if (len > maxlen) maxlen = len;
+        count++;
+
+        if (count >= MAX_FILES) break;
     }
 
     if (errno != 0)
         perror("readdir failed");
 
     closedir(dp);
+
+    /* Now display */
+    if (long_listing) {
+        for (int i = 0; i < count; i++)
+            print_long(dir, names[i]);
+    } else {
+        print_columns(names, count, maxlen);
+    }
+
+    /* Free memory */
+    for (int i = 0; i < count; i++)
+        free(names[i]);
 }
