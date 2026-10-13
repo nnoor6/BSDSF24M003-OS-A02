@@ -79,3 +79,40 @@ in priority order:
 
 If both -l and -x are given, -l wins (long listing takes precedence), which
 matches how real ls behaves.
+
+## Feature 5: Alphabetical Sort
+
+### Q1: Why read all entries before sorting, and drawbacks for large directories
+qsort() requires the entire set of items to be available at once, so that it
+can reorder them by comparing and swapping. Since readdir() returns entries
+one at a time and in an unspecified order, we must first store every entry
+(a copy of each filename, since readdir reuses its internal buffer). Only
+after the full list is collected can we sort it and then display the sorted
+result.
+
+Drawbacks for directories containing millions of files:
+  - Memory usage grows linearly with the number of entries; a huge directory
+    can exhaust RAM.
+  - Sorting cost is O(n log n); with millions of entries this becomes
+    significant.
+  - Directory I/O becomes slower, and the program must wait for readdir to
+    finish before printing anything, so the user sees no output during the
+    scan (real ls has optimizations like deferred sorting by column order).
+
+### Q2: The qsort comparison function
+
+Signature:
+    int compare(const void *a, const void *b);
+
+qsort does not know what type of data it is sorting, so it treats every
+element as a void pointer. Our array elements are of type char *, so inside
+the comparison function we cast each const void * back to const char ** and
+dereference once to get the actual char *. We then call strcmp on the two
+strings.
+
+The function must take const void * arguments because qsort's interface
+guarantees only that it will pass pointers to elements — it does not modify
+them, and it needs a single generic signature that works for any data type.
+Returning a negative, zero, or positive int tells qsort the relative order
+of the two elements.
+
