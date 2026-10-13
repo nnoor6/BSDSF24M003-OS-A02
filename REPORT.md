@@ -150,3 +150,35 @@ To check whether any user can execute the file, we do:
 Each bit is tested with bitwise AND against the corresponding mask. If the
 result is nonzero for any of the three, the file is considered executable
 by at least someone, and ls colors it green.
+
+
+## Feature 7: Recursive Listing (-R)
+
+### Q1: What is a "base case" in recursion, and what stops our recursive ls?
+A base case is the condition under which a recursive function stops calling
+itself. Without a base case, recursion would continue forever (or until the
+program runs out of stack memory).
+
+In our recursive ls, the base case is: when the current directory contains
+no subdirectories (or none we are allowed to read). In that case, the loop
+over the collected names finds no entry whose lstat() reports S_ISDIR, so
+no further recursive call is made, and the function returns normally.
+
+We also avoid an infinite loop by skipping entries whose name starts with
+'.', which excludes "." (the current directory) and ".." (the parent). If
+we didn't skip these, we would recurse into "." forever.
+
+### Q2: Why build the full path before recursive calls?
+We must build the full path (e.g., "parent/subdir") before making the
+recursive call because, once we enter the child directory, the current
+working directory is unchanged — Linux directories are identified by their
+path, not by a global "current subdirectory".
+
+If we simply called do_ls("subdir") from inside do_ls("parent"), the
+opendir("subdir") call would look for "subdir" relative to the process's
+current working directory (which is the top-level directory where the user
+launched the program), NOT relative to "parent". In most cases this lookup
+would fail and the subdirectory would not be listed.
+
+By constructing the path "parent/subdir", we give opendir() a path that
+resolves correctly regardless of where the process was launched.
