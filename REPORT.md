@@ -18,3 +18,27 @@ The st_mode field is a bitmask. The upper bits encode the file type, and the low
 - Special bits (setuid, setgid, sticky) are checked with S_ISUID, S_ISGID, S_ISVTX.
 By combining these checks we can construct the 10-character permission string
 shown by ls -l (e.g., "drwxr-xr-x").
+
+## Feature 3: Column Display (Down Then Across)
+
+### Q1: Logic for "down then across" and why a single loop is insufficient
+In "down then across", items are laid out column-by-column: the first
+`rows` items fill the first column top-to-bottom, the next `rows` items
+fill the second column, and so on. To print them, we cannot simply loop
+`for (i = 0; i < count; i++)` because that would print left-to-right
+(which is the -x horizontal mode). Instead, we must iterate **row by
+row**, and for each row, pick the item that belongs to that row in each
+column. The formula is:
+    index = column * total_rows + row
+This mapping is what produces the "down then across" effect. A single
+loop would produce "across" order, which is only correct for -x.
+
+### Q2: Purpose of ioctl(TIOCGWINSZ) and the limitation of a fixed-width fallback
+ioctl() with the TIOCGWINSZ request queries the terminal driver for the
+current terminal window size (rows and columns). This lets ls adapt its
+output to the actual terminal width, so users get the maximum number of
+columns that fit. If we instead used a fixed fallback (say 80 columns),
+then on a wider terminal we would waste space and produce fewer columns
+than possible, and on a narrower terminal the output would overflow or
+wrap awkwardly. The fixed fallback is only useful when the output is
+redirected (e.g., `ls > file`), because there's no terminal to query.
